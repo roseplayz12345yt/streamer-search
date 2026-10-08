@@ -4,13 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Watch · Streamer Search</title>
-  <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
       background: #0f0f13;
       color: #f0f0f5;
       font-family: 'Inter', system-ui, sans-serif;
@@ -62,6 +61,7 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      flex-wrap: wrap;
     }
     .watch-actions a,
     .watch-actions button {
@@ -78,39 +78,45 @@
       background: #9146ff;
       color: white;
     }
-    .btn-external:hover {
-      background: #7c3aed;
-    }
+    .btn-external:hover { background: #7c3aed; }
     .btn-back {
       background: #242433;
       color: #f0f0f5;
       border: 1px solid #2e2e42;
     }
-    .btn-back:hover {
-      background: #2e2e42;
-    }
+    .btn-back:hover { background: #2e2e42; }
     .watch-player {
       flex: 1;
       display: flex;
-      align-items: center;
+      flex-direction: column;
+      align-items: stretch;
       justify-content: center;
       background: #000;
       min-height: 0;
+      position: relative;
     }
     .watch-player iframe {
       width: 100%;
-      height: 100%;
+      flex: 1;
       min-height: 70vh;
       border: none;
+      display: block;
     }
     .watch-error {
       text-align: center;
       padding: 60px 20px;
       color: #a0a0b8;
     }
-    .watch-error a {
-      color: #9146ff;
+    .watch-error a { color: #9146ff; }
+    .watch-hint {
+      padding: 10px 20px;
+      background: #1a1a24;
+      border-top: 1px solid #2e2e42;
+      font-size: 0.8rem;
+      color: #a0a0b8;
+      text-align: center;
     }
+    .watch-hint a { color: #9146ff; }
     @media (max-width: 600px) {
       .watch-title {
         order: 3;
@@ -118,9 +124,7 @@
         text-align: left;
         margin-top: 4px;
       }
-      .watch-player iframe {
-        min-height: 50vh;
-      }
+      .watch-player iframe { min-height: 50vh; }
     }
   </style>
 </head>
@@ -133,26 +137,20 @@
     <div class="watch-title" id="watch-title">Loading…</div>
     <div class="watch-actions">
       <a class="btn-external" id="external-link" href="#" target="_blank" rel="noopener">Open original</a>
-      <button class="btn-back" onclick="window.close()">Close tab</button>
+      <button class="btn-back" type="button" id="close-btn">Close tab</button>
     </div>
   </header>
 
   <main class="watch-player" id="player-area">
     <div class="watch-error" id="error" hidden>
-      <p>Could not load the player.</p>
-      <p><a href="index.html">← Back to search</a></p>
+      <p id="error-msg">Could not load the player.</p>
+      <p style="margin-top:12px"><a href="index.html">← Back to search</a></p>
     </div>
   </main>
 
-  <script>
-    const INVIDIOUS_INSTANCES = [
-      'https://invidious.f5.si',
-      'https://yewtu.be',
-      'https://inv.tux.pizza',
-      'https://invidious.privacydev.net',
-      'https://iv.melmac.space'
-    ];
+  <div class="watch-hint" id="hint" hidden></div>
 
+  <script>
     const params = new URLSearchParams(location.search);
     const type = params.get('type'); // 'yt' | 'twitch'
     const id = params.get('id');
@@ -163,35 +161,76 @@
     document.title = title + ' · Streamer Search';
     document.getElementById('external-link').href = external;
 
+    document.getElementById('close-btn').addEventListener('click', () => {
+      window.close();
+      // If window.close is blocked, go back to search
+      setTimeout(() => { location.href = 'index.html'; }, 200);
+    });
+
     const area = document.getElementById('player-area');
     const errorEl = document.getElementById('error');
+    const errorMsg = document.getElementById('error-msg');
+    const hint = document.getElementById('hint');
 
-    function showError() {
+    function showError(msg) {
+      errorMsg.textContent = msg || 'Could not load the player.';
       errorEl.hidden = false;
     }
 
+    function createIframe(src) {
+      const iframe = document.createElement('iframe');
+      iframe.src = src;
+      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen');
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      iframe.title = title;
+      // Important for some embeds
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox');
+      // Actually sandbox can break YouTube/Twitch - remove sandbox for reliability
+      iframe.removeAttribute('sandbox');
+      return iframe;
+    }
+
     if (!type || !id) {
-      showError();
+      showError('Missing video or stream info. Go back and try again.');
     } else if (type === 'yt') {
-      // Prefer Invidious embed; fall back to YouTube if needed
-      const inv = params.get('inv') || INVIDIOUS_INSTANCES[0];
-      const iframe = document.createElement('iframe');
-      iframe.src = inv + '/embed/' + encodeURIComponent(id) + '?autoplay=1';
-      iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-      iframe.allowFullscreen = true;
-      iframe.title = title;
+      // Official YouTube embed — most reliable (avoids "no compatible source" from broken Invidious instances)
+      const ytSrc = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) +
+        '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+      const iframe = createIframe(ytSrc);
       area.insertBefore(iframe, errorEl);
+
+      hint.hidden = false;
+      hint.innerHTML = 'Playing via YouTube. If it does not start, <a href="' +
+        escapeHtml(external) + '" target="_blank" rel="noopener">open on YouTube</a>.';
     } else if (type === 'twitch') {
+      // Twitch requires parent = the hostname of the page embedding the player
       const parent = location.hostname || 'localhost';
-      const iframe = document.createElement('iframe');
-      iframe.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(id) +
-        '&parent=' + encodeURIComponent(parent) + '&autoplay=true';
-      iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-      iframe.allowFullscreen = true;
-      iframe.title = title;
+      // Also pass common GitHub Pages host if needed
+      const parents = [parent];
+      if (parent.endsWith('.github.io')) {
+        // already correct
+      }
+
+      const twitchSrc = 'https://player.twitch.tv/?channel=' + encodeURIComponent(id) +
+        '&parent=' + encodeURIComponent(parent) +
+        '&autoplay=true&muted=false';
+
+      const iframe = createIframe(twitchSrc);
       area.insertBefore(iframe, errorEl);
+
+      hint.hidden = false;
+      hint.innerHTML = 'Playing via Twitch. If the stream does not load, <a href="' +
+        escapeHtml(external) + '" target="_blank" rel="noopener">open on Twitch</a>. ' +
+        '(Embeds only work on the live site domain, not file://)';
     } else {
-      showError();
+      showError('Unknown content type.');
+    }
+
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
     }
   </script>
 </body>

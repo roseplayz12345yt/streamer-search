@@ -48,7 +48,6 @@ function openPlayer(item) {
   if (item.platform === 'youtube' && item.videoId) {
     params.set('type', 'yt');
     params.set('id', item.videoId);
-    params.set('inv', activeInvidious);
   } else if (item.platform === 'twitch' && item.login) {
     params.set('type', 'twitch');
     params.set('id', item.login);
@@ -60,8 +59,10 @@ function openPlayer(item) {
   params.set('title', item.title || 'Watching');
   params.set('url', item.url || '');
 
-  const watchUrl = 'watch.html?' + params.toString();
-  window.open(watchUrl, '_blank');
+  // Relative URL so it works on GitHub Pages and local servers
+  const watchUrl = new URL('watch.html', location.href);
+  watchUrl.search = params.toString();
+  window.open(watchUrl.href, '_blank', 'noopener');
 }
 
 async function doSearch() {
@@ -118,7 +119,7 @@ async function searchYouTube(query) {
       activeInvidious = base;
 
       const videoItems = (videos || [])
-        .filter(item => item.type === 'video')
+        .filter(item => item.type === 'video' && item.videoId)
         .slice(0, 10)
         .map(item => ({
           platform: 'youtube',
