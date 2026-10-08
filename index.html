@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streamer Search | YouTube & Twitch</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">▶</span>
+        <h1>Streamer Search</h1>
+      </div>
+      <p class="tagline">Find YouTubers & Twitch streamers instantly</p>
+    </header>
+
+    <section class="settings" id="settings">
+      <h2>API Keys Setup</h2>
+      <p class="settings-note">Keys are stored only in your browser (localStorage). Never share them.</p>
+      <div class="key-grid">
+        <div class="key-field">
+          <label for="yt-key">YouTube Data API Key</label>
+          <input type="password" id="yt-key" placeholder="AIza...">
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Get key →</a>
+        </div>
+        <div class="key-field">
+          <label for="twitch-id">Twitch Client ID</label>
+          <input type="password" id="twitch-id" placeholder="Client ID">
+          <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener">Get Client ID →</a>
+        </div>
+        <div class="key-field">
+          <label for="twitch-secret">Twitch Client Secret (for token)</label>
+          <input type="password" id="twitch-secret" placeholder="Client Secret">
+        </div>
+      </div>
+      <button id="save-keys" class="btn primary">Save Keys</button>
+      <p id="keys-status" class="status"></p>
+    </section>
+
+    <section class="search-section">
+      <div class="tabs">
+        <button class="tab active" data-platform="youtube">YouTube</button>
+        <button class="tab" data-platform="twitch">Twitch</button>
+        <button class="tab" data-platform="both">Both</button>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search streamers, channels, or keywords..." autocomplete="off">
+        <button id="search-btn" class="btn primary">Search</button>
+      </div>
+
+      <div class="filters">
+        <label><input type="checkbox" id="live-only"> Live only (Twitch)</label>
+      </div>
+    </section>
+
+    <section class="results" id="results">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>Enter a search term and hit Search to find streamers</p>
+      </div>
+      <div class="results-grid" id="results-grid"></div>
+      <div class="loading" id="loading" hidden>
+        <div class="spinner"></div>
+        <p>Searching...</p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>Built with ❤️ · Open source on <a href="https://github.com/roseplayz12345yt/streamer-search" target="_blank">GitHub</a></p>
+      <p class="disclaimer">This is a client-side demo. API usage is subject to YouTube & Twitch terms of service.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
