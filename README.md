@@ -1,17 +1,19 @@
 # Streamer Search
 
-A modern, **key-free** website to search for **YouTube channels** and **Twitch streamers**.
+A modern, **key-free** website to **search and watch** YouTube videos & Twitch live streams.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![No API Keys](https://img.shields.io/badge/API%20keys-not%20required-success)
+![Watch in-site](https://img.shields.io/badge/watch-in--site%20player-purple)
 
 ## Features
 
-- Search YouTube channels (via public Invidious instances)
-- Search Twitch streamers (via Twitch public GraphQL)
+- Search **YouTube videos + channels** (via public Invidious instances)
+- Search **Twitch streamers** (via Twitch public GraphQL)
+- **Watch videos and live streams directly on the site** (embedded player)
 - Filter Twitch results to **Live only**
 - Combined search (Both platforms)
-- Beautiful dark UI
+- Beautiful dark UI with play overlays
 - **No API keys required**
 - Fully static — works with GitHub Pages
 
@@ -21,12 +23,21 @@ Enable GitHub Pages on this repo, then visit:
 
 **https://roseplayz12345yt.github.io/streamer-search/**
 
-## How it works
+## How watching works
+
+| Content | How it plays |
+|---------|--------------|
+| YouTube videos | Embedded via Invidious (privacy-friendly) or YouTube |
+| Twitch live streams | Official Twitch player embed (`player.twitch.tv`) |
+
+Click **Watch** or the play button on any video/live card to open the in-site player.
+
+## How search works
 
 | Platform | Source |
 |----------|--------|
-| YouTube  | Public [Invidious](https://invidious.io) instances (`/api/v1/search`) |
-| Twitch   | Official public GraphQL endpoint (`gql.twitch.tv`) with the web Client-ID |
+| YouTube  | Public [Invidious](https://invidious.io) instances |
+| Twitch   | Official public GraphQL (`gql.twitch.tv`) |
 
 Everything runs in the browser. No backend, no keys, no signup.
 
@@ -34,9 +45,9 @@ Everything runs in the browser. No backend, no keys, no signup.
 
 ```
 streamer-search/
-├── index.html      # Main page
-├── styles.css      # Dark modern UI
-├── app.js          # Search logic (Invidious + Twitch GQL)
+├── index.html      # Main page + player modal
+├── styles.css      # Dark modern UI + player
+├── app.js          # Search + embed logic
 └── README.md
 ```
 
@@ -47,10 +58,12 @@ streamer-search/
 3. Select branch `main` and folder `/ (root)`
 4. Save — the site will be live in about a minute
 
+**Note for Twitch embeds:** Twitch requires the correct `parent` domain. On GitHub Pages this is automatically set to `roseplayz12345yt.github.io`.
+
 ## Notes
 
-- Invidious instances can go down or rate-limit; the app automatically tries several.
-- Twitch GQL is undocumented and may change; the hash used is the current public one.
+- Invidious instances can go down; the app automatically tries several.
+- Twitch GQL is undocumented and may change.
 - This is a demo / educational project. Respect YouTube & Twitch terms of service.
 
 ## License

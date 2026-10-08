@@ -1,6 +1,7 @@
 // Streamer Search — No API keys required
 // YouTube via public Invidious instances
 // Twitch via public GraphQL endpoint
+// Watch videos & live streams in-site
 
 const INVIDIOUS_INSTANCES = [
   'https://invidious.f5.si',
@@ -13,7 +14,11 @@ const INVIDIOUS_INSTANCES = [
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 const TWITCH_SEARCH_HASH = 'c2df3c3038e88bde5af3da9c0bdd215ee83ab9a5850c7e57afdbc223ea74e102';
 
+// Detect parent domain for Twitch embeds (required by Twitch)
+const TWITCH_PARENT = location.hostname || 'localhost';
+
 let currentPlatform = 'youtube';
+let activeInvidious = INVIDIOUS_INSTANCES[0];
 
 // DOM
 const searchInput = document.getElementById('search-input');
@@ -23,6 +28,13 @@ const resultsGrid = document.getElementById('results-grid');
 const emptyState = document.getElementById('empty-state');
 const loading = document.getElementById('loading');
 const tabs = document.querySelectorAll('.tab');
+
+const playerModal = document.getElementById('player-modal');
+const playerIframe = document.getElementById('player-iframe');
+const playerTitle = document.getElementById('player-title');
+const playerExternal = document.getElementById('player-external');
+const playerClose = document.getElementById('player-close');
+const playerBackdrop = document.getElementById('player-backdrop');
 
 // Tabs
 tabs.forEach(tab => {
@@ -38,6 +50,41 @@ searchInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
 });
 searchBtn.addEventListener('click', doSearch);
+
+// Player close
+playerClose.addEventListener('click', closePlayer);
+playerBackdrop.addEventListener('click', closePlayer);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePlayer();
+});
+
+function openPlayer(item) {
+  let embedUrl = '';
+
+  if (item.platform === 'youtube' && item.videoId) {
+    // Prefer Invidious embed for privacy, fallback to YouTube
+    embedUrl = `${activeInvidious}/embed/${item.videoId}?autoplay=1`;
+  } else if (item.platform === 'twitch' && item.login) {
+    // Live stream embed (or VOD if we had id)
+    embedUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(item.login)}&parent=${TWITCH_PARENT}&autoplay=true`;
+  } else {
+    // Fallback: open external
+    window.open(item.url, '_blank');
+    return;
+  }
+
+  playerTitle.textContent = item.title || 'Watching';
+  playerExternal.href = item.url;
+  playerIframe.src = embedUrl;
+  playerModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closePlayer() {
+  playerIframe.src = '';
+  playerModal.hidden = true;
+  document.body.style.overflow = '';
+}
 
 async function doSearch() {
   const q = searchInput.value.trim();
@@ -74,30 +121,64 @@ async function doSearch() {
   results.forEach(r => resultsGrid.appendChild(createCard(r)));
 }
 
-// ---- YouTube via Invidious ----
+// ---- YouTube via Invidious (videos + channels) ----
 async function searchYouTube(query) {
   let lastError = null;
 
   for (const base of INVIDIOUS_INSTANCES) {
     try {
-      const url = `${base}/api/v1/search?q=${encodeURIComponent(query)}&type=channel`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      // Fetch both videos and channels
+      const [videosRes, channelsRes] = await Promise.all([
+        fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { signal: AbortSignal.timeout(8000) }),
+        fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=channel`, { signal: AbortSignal.timeout(8000) })
+      ]);
 
-      return (data || [])
-        .filter(item => item.type === 'channel')
-        .slice(0, 12)
+      if (!videosRes.ok && !channelsRes.ok) throw new Error(`HTTP ${videosRes.status}`);
+
+      const videos = videosRes.ok ? await videosRes.json() : [];
+      const channels = channelsRes.ok ? await channelsRes.json() : [];
+
+      activeInvidious = base; // remember working instance for embeds
+
+      const videoItems = (videos || [])
+        .filter(item => item.type === 'video')
+        .slice(0, 10)
         .map(item => ({
           platform: 'youtube',
+          type: 'video',
+          id: item.videoId,
+          videoId: item.videoId,
+          title: item.title,
+          description: item.description || item.author || '',
+          thumbnail: fixThumb(item.videoThumbnails),
+          url: `https://www.youtube.com/watch?v=${item.videoId}`,
+          meta: [
+            item.author,
+            item.viewCount ? `${formatCount(item.viewCount)} views` : null,
+            item.lengthSeconds ? formatDuration(item.lengthSeconds) : null
+          ].filter(Boolean).join(' · '),
+          live: !!item.liveNow,
+          canWatch: true
+        }));
+
+      const channelItems = (channels || [])
+        .filter(item => item.type === 'channel')
+        .slice(0, 6)
+        .map(item => ({
+          platform: 'youtube',
+          type: 'channel',
           id: item.authorId,
           title: item.author,
           description: item.description || '',
           thumbnail: fixThumb(item.authorThumbnails),
           url: `https://www.youtube.com/channel/${item.authorId}`,
           meta: item.subCount ? `${formatCount(item.subCount)} subscribers` : '',
-          live: false
+          live: false,
+          canWatch: false
         }));
+
+      // Videos first (watchable), then channels
+      return [...videoItems, ...channelItems];
     } catch (err) {
       lastError = err;
       console.warn(`Invidious ${base} failed:`, err.message);
@@ -109,7 +190,6 @@ async function searchYouTube(query) {
 
 function fixThumb(thumbs) {
   if (!thumbs || !thumbs.length) return '';
-  // Prefer larger size
   const sorted = [...thumbs].sort((a, b) => (b.width || 0) - (a.width || 0));
   let url = sorted[0].url || '';
   if (url.startsWith('//')) url = 'https:' + url;
@@ -120,6 +200,14 @@ function formatCount(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(n);
+}
+
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // ---- Twitch via public GQL ----
@@ -156,27 +244,26 @@ async function searchTwitch(query) {
 
   let items = edges.map(edge => {
     const item = edge.item || edge.node || {};
-    const isLive = !!(item.stream || (item.lastBroadcast && item.latestVideo?.edges?.[0]?.node?.status === 'RECORDING'));
-    // Better live detection: check if stream object exists in some responses
-    const live = !!item.stream || (item.broadcastSettings && item.lastBroadcast);
+    const login = item.login;
 
     return {
       platform: 'twitch',
+      type: 'channel',
       id: item.id,
-      title: item.displayName || item.login,
+      login: login,
+      title: item.displayName || login,
       description: item.description || item.broadcastSettings?.title || '',
       thumbnail: item.profileImageURL || '',
-      url: `https://www.twitch.tv/${item.login}`,
+      url: `https://www.twitch.tv/${login}`,
       meta: item.followers?.totalCount
         ? `${formatCount(item.followers.totalCount)} followers`
         : (item.broadcastSettings?.title || ''),
-      live: !!item.stream, // stream presence is the cleanest live signal
-      game: item.stream?.game?.name || ''
+      live: false,
+      game: '',
+      canWatch: false // set after enrich
     };
   });
 
-  // Re-fetch live status more accurately for top results if needed
-  // For simplicity we use what GQL returns; improve live detection:
   items = await enrichTwitchLive(items);
 
   if (liveOnly.checked) {
@@ -187,8 +274,7 @@ async function searchTwitch(query) {
 }
 
 async function enrichTwitchLive(items) {
-  // Batch simple user lookups for live status (max 5 to stay light)
-  const top = items.slice(0, 8);
+  const top = items.slice(0, 10);
   const lookups = top.map(async (item) => {
     try {
       const res = await fetch('https://gql.twitch.tv/gql', {
@@ -199,20 +285,24 @@ async function enrichTwitchLive(items) {
         },
         body: JSON.stringify({
           query: `query($login: String!) { user(login: $login) { stream { id title game { name } viewersCount } } }`,
-          variables: { login: item.url.split('/').pop() }
+          variables: { login: item.login }
         })
       });
       const data = await res.json();
       const stream = data?.data?.user?.stream;
       if (stream) {
         item.live = true;
-        item.game = stream.game?.name || item.game;
+        item.canWatch = true;
+        item.game = stream.game?.name || '';
         item.description = stream.title || item.description;
         item.meta = stream.viewersCount
-          ? `${formatCount(stream.viewersCount)} viewers`
+          ? `${formatCount(stream.viewersCount)} viewers · ${item.game || ''}`.trim()
           : item.meta;
+        // Better thumbnail for live: use preview if available
+        item.thumbnail = `https://static-cdn.jtvnw.net/previews-ttv/live_user_${item.login}-640x360.jpg`;
       } else {
         item.live = false;
+        item.canWatch = false;
       }
     } catch (_) { /* ignore */ }
     return item;
@@ -227,29 +317,52 @@ function createCard(item) {
   const card = document.createElement('article');
   card.className = 'card';
 
-  const thumb = item.thumbnail
+  const canWatch = item.canWatch || (item.platform === 'youtube' && item.videoId);
+
+  const thumbHtml = item.thumbnail
     ? `<img class="card-thumb" src="${item.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'">`
-    : `<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted)">No image</div>`;
+    : `<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);height:100%">No image</div>`;
+
+  const playOverlay = canWatch
+    ? `<div class="card-play-overlay"><button class="card-play-btn" aria-label="Watch">▶</button></div>`
+    : '';
 
   const platformLabel = item.platform === 'youtube'
-    ? `<span class="card-platform youtube">▶ YouTube</span>`
+    ? `<span class="card-platform youtube">▶ YouTube ${item.type === 'video' ? 'Video' : 'Channel'}</span>`
     : `<span class="card-platform twitch">📺 Twitch</span>`;
 
   const liveBadge = item.live ? `<span class="live-badge">LIVE</span>` : '';
 
+  const watchBtn = canWatch
+    ? `<button class="btn watch watch-btn">Watch</button>`
+    : '';
+
   card.innerHTML = `
-    ${thumb}
+    <div class="card-thumb-wrap ${canWatch ? 'has-play' : ''}">
+      ${thumbHtml}
+      ${playOverlay}
+    </div>
     <div class="card-body">
       ${platformLabel}
       <h3 class="card-title">${escapeHtml(item.title)}</h3>
       <p class="card-meta">${escapeHtml(item.meta || item.game || '')}</p>
       <p class="card-desc">${escapeHtml(item.description || '')}</p>
       <div class="card-footer">
-        ${liveBadge}
-        <a class="card-link" href="${item.url}" target="_blank" rel="noopener">View →</a>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${liveBadge}
+          ${watchBtn}
+        </div>
+        <a class="card-link" href="${item.url}" target="_blank" rel="noopener">Open →</a>
       </div>
     </div>
   `;
+
+  if (canWatch) {
+    const open = () => openPlayer(item);
+    card.querySelector('.card-play-overlay')?.addEventListener('click', open);
+    card.querySelector('.watch-btn')?.addEventListener('click', open);
+  }
+
   return card;
 }
 
