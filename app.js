@@ -1,21 +1,21 @@
-// Streamer Search - Client-side YouTube & Twitch search
+// Streamer Search — No API keys required
+// YouTube via public Invidious instances
+// Twitch via public GraphQL endpoint
 
-const STORAGE_KEYS = {
-  yt: 'ss_yt_key',
-  twitchId: 'ss_twitch_id',
-  twitchSecret: 'ss_twitch_secret',
-  twitchToken: 'ss_twitch_token',
-  twitchTokenExp: 'ss_twitch_token_exp'
-};
+const INVIDIOUS_INSTANCES = [
+  'https://invidious.f5.si',
+  'https://yewtu.be',
+  'https://inv.tux.pizza',
+  'https://invidious.privacydev.net',
+  'https://iv.melmac.space'
+];
+
+const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+const TWITCH_SEARCH_HASH = 'c2df3c3038e88bde5af3da9c0bdd215ee83ab9a5850c7e57afdbc223ea74e102';
 
 let currentPlatform = 'youtube';
 
 // DOM
-const ytKeyInput = document.getElementById('yt-key');
-const twitchIdInput = document.getElementById('twitch-id');
-const twitchSecretInput = document.getElementById('twitch-secret');
-const saveKeysBtn = document.getElementById('save-keys');
-const keysStatus = document.getElementById('keys-status');
 const searchInput = document.getElementById('search-input');
 const searchBtn = document.getElementById('search-btn');
 const liveOnly = document.getElementById('live-only');
@@ -23,25 +23,6 @@ const resultsGrid = document.getElementById('results-grid');
 const emptyState = document.getElementById('empty-state');
 const loading = document.getElementById('loading');
 const tabs = document.querySelectorAll('.tab');
-
-// Load saved keys
-function loadKeys() {
-  ytKeyInput.value = localStorage.getItem(STORAGE_KEYS.yt) || '';
-  twitchIdInput.value = localStorage.getItem(STORAGE_KEYS.twitchId) || '';
-  twitchSecretInput.value = localStorage.getItem(STORAGE_KEYS.twitchSecret) || '';
-}
-
-saveKeysBtn.addEventListener('click', () => {
-  localStorage.setItem(STORAGE_KEYS.yt, ytKeyInput.value.trim());
-  localStorage.setItem(STORAGE_KEYS.twitchId, twitchIdInput.value.trim());
-  localStorage.setItem(STORAGE_KEYS.twitchSecret, twitchSecretInput.value.trim());
-  // Clear old token so it refreshes
-  localStorage.removeItem(STORAGE_KEYS.twitchToken);
-  localStorage.removeItem(STORAGE_KEYS.twitchTokenExp);
-  keysStatus.textContent = 'Keys saved successfully!';
-  keysStatus.className = 'status ok';
-  setTimeout(() => { keysStatus.textContent = ''; }, 3000);
-});
 
 // Tabs
 tabs.forEach(tab => {
@@ -79,102 +60,166 @@ async function doSearch() {
     }
   } catch (err) {
     console.error(err);
-    resultsGrid.innerHTML = `<p class="status err" style="grid-column:1/-1;padding:20px">Error: ${err.message}</p>`;
+    resultsGrid.innerHTML = `<p style="grid-column:1/-1;padding:20px;color:#ef4444">Error: ${escapeHtml(err.message)}</p>`;
   }
 
   loading.hidden = true;
 
   if (results.length === 0) {
     emptyState.hidden = false;
-    emptyState.querySelector('p').textContent = 'No results found. Try a different query or check your API keys.';
+    emptyState.querySelector('p').textContent = 'No results found. Try a different query.';
     return;
   }
 
   results.forEach(r => resultsGrid.appendChild(createCard(r)));
 }
 
-// ---- YouTube ----
+// ---- YouTube via Invidious ----
 async function searchYouTube(query) {
-  const key = localStorage.getItem(STORAGE_KEYS.yt);
-  if (!key) throw new Error('YouTube API key is missing. Add it in the settings above.');
+  let lastError = null;
 
-  // Search channels first
-  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=12&key=${key}`;
-  const res = await fetch(searchUrl);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `YouTube API error ${res.status}`);
-  }
-  const data = await res.json();
+  for (const base of INVIDIOUS_INSTANCES) {
+    try {
+      const url = `${base}/api/v1/search?q=${encodeURIComponent(query)}&type=channel`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
 
-  return (data.items || []).map(item => ({
-    platform: 'youtube',
-    id: item.id.channelId,
-    title: item.snippet.title,
-    description: item.snippet.description,
-    thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-    url: `https://www.youtube.com/channel/${item.id.channelId}`,
-    publishedAt: item.snippet.publishedAt,
-    live: false
-  }));
-}
-
-// ---- Twitch ----
-async function getTwitchToken() {
-  const clientId = localStorage.getItem(STORAGE_KEYS.twitchId);
-  const clientSecret = localStorage.getItem(STORAGE_KEYS.twitchSecret);
-  if (!clientId || !clientSecret) throw new Error('Twitch Client ID and Secret are required.');
-
-  const cached = localStorage.getItem(STORAGE_KEYS.twitchToken);
-  const exp = parseInt(localStorage.getItem(STORAGE_KEYS.twitchTokenExp) || '0', 10);
-  if (cached && Date.now() < exp - 60000) return cached;
-
-  const res = await fetch('https://id.twitch.tv/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&grant_type=client_credentials`
-  });
-  if (!res.ok) throw new Error('Failed to get Twitch token. Check Client ID & Secret.');
-  const data = await res.json();
-  localStorage.setItem(STORAGE_KEYS.twitchToken, data.access_token);
-  localStorage.setItem(STORAGE_KEYS.twitchTokenExp, String(Date.now() + data.expires_in * 1000));
-  return data.access_token;
-}
-
-async function searchTwitch(query) {
-  const clientId = localStorage.getItem(STORAGE_KEYS.twitchId);
-  const token = await getTwitchToken();
-
-  // Search channels
-  const searchUrl = `https://api.twitch.tv/helix/search/channels?query=${encodeURIComponent(query)}&first=12`;
-  const res = await fetch(searchUrl, {
-    headers: {
-      'Client-ID': clientId,
-      'Authorization': `Bearer ${token}`
+      return (data || [])
+        .filter(item => item.type === 'channel')
+        .slice(0, 12)
+        .map(item => ({
+          platform: 'youtube',
+          id: item.authorId,
+          title: item.author,
+          description: item.description || '',
+          thumbnail: fixThumb(item.authorThumbnails),
+          url: `https://www.youtube.com/channel/${item.authorId}`,
+          meta: item.subCount ? `${formatCount(item.subCount)} subscribers` : '',
+          live: false
+        }));
+    } catch (err) {
+      lastError = err;
+      console.warn(`Invidious ${base} failed:`, err.message);
     }
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Twitch API error ${res.status}`);
   }
+
+  throw new Error(lastError?.message || 'All YouTube proxies failed. Try again later.');
+}
+
+function fixThumb(thumbs) {
+  if (!thumbs || !thumbs.length) return '';
+  // Prefer larger size
+  const sorted = [...thumbs].sort((a, b) => (b.width || 0) - (a.width || 0));
+  let url = sorted[0].url || '';
+  if (url.startsWith('//')) url = 'https:' + url;
+  return url;
+}
+
+function formatCount(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
+// ---- Twitch via public GQL ----
+async function searchTwitch(query) {
+  const body = [{
+    operationName: 'SearchResultsPage_SearchResults',
+    variables: {
+      platform: 'web',
+      query: query,
+      options: { targets: null, shouldSkipDiscoveryControl: false },
+      requestID: crypto.randomUUID()
+    },
+    extensions: {
+      persistedQuery: {
+        version: 1,
+        sha256Hash: TWITCH_SEARCH_HASH
+      }
+    }
+  }];
+
+  const res = await fetch('https://gql.twitch.tv/gql', {
+    method: 'POST',
+    headers: {
+      'Client-ID': TWITCH_CLIENT_ID,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) throw new Error(`Twitch GQL error ${res.status}`);
   const data = await res.json();
 
-  let items = data.data || [];
+  const edges = data?.[0]?.data?.searchFor?.channels?.edges || [];
+
+  let items = edges.map(edge => {
+    const item = edge.item || edge.node || {};
+    const isLive = !!(item.stream || (item.lastBroadcast && item.latestVideo?.edges?.[0]?.node?.status === 'RECORDING'));
+    // Better live detection: check if stream object exists in some responses
+    const live = !!item.stream || (item.broadcastSettings && item.lastBroadcast);
+
+    return {
+      platform: 'twitch',
+      id: item.id,
+      title: item.displayName || item.login,
+      description: item.description || item.broadcastSettings?.title || '',
+      thumbnail: item.profileImageURL || '',
+      url: `https://www.twitch.tv/${item.login}`,
+      meta: item.followers?.totalCount
+        ? `${formatCount(item.followers.totalCount)} followers`
+        : (item.broadcastSettings?.title || ''),
+      live: !!item.stream, // stream presence is the cleanest live signal
+      game: item.stream?.game?.name || ''
+    };
+  });
+
+  // Re-fetch live status more accurately for top results if needed
+  // For simplicity we use what GQL returns; improve live detection:
+  items = await enrichTwitchLive(items);
 
   if (liveOnly.checked) {
-    items = items.filter(c => c.is_live);
+    items = items.filter(c => c.live);
   }
 
-  return items.map(c => ({
-    platform: 'twitch',
-    id: c.id,
-    title: c.display_name,
-    description: c.title || c.game_name || '',
-    thumbnail: c.thumbnail_url?.replace('{width}', '320').replace('{height}', '180') || '',
-    url: `https://www.twitch.tv/${c.broadcaster_login}`,
-    live: c.is_live,
-    game: c.game_name
-  }));
+  return items.slice(0, 12);
+}
+
+async function enrichTwitchLive(items) {
+  // Batch simple user lookups for live status (max 5 to stay light)
+  const top = items.slice(0, 8);
+  const lookups = top.map(async (item) => {
+    try {
+      const res = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: {
+          'Client-ID': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query: `query($login: String!) { user(login: $login) { stream { id title game { name } viewersCount } } }`,
+          variables: { login: item.url.split('/').pop() }
+        })
+      });
+      const data = await res.json();
+      const stream = data?.data?.user?.stream;
+      if (stream) {
+        item.live = true;
+        item.game = stream.game?.name || item.game;
+        item.description = stream.title || item.description;
+        item.meta = stream.viewersCount
+          ? `${formatCount(stream.viewersCount)} viewers`
+          : item.meta;
+      } else {
+        item.live = false;
+      }
+    } catch (_) { /* ignore */ }
+    return item;
+  });
+
+  await Promise.all(lookups);
+  return items;
 }
 
 // ---- Card renderer ----
@@ -183,7 +228,7 @@ function createCard(item) {
   card.className = 'card';
 
   const thumb = item.thumbnail
-    ? `<img class="card-thumb" src="${item.thumbnail}" alt="" loading="lazy">`
+    ? `<img class="card-thumb" src="${item.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'">`
     : `<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted)">No image</div>`;
 
   const platformLabel = item.platform === 'youtube'
@@ -197,7 +242,7 @@ function createCard(item) {
     <div class="card-body">
       ${platformLabel}
       <h3 class="card-title">${escapeHtml(item.title)}</h3>
-      <p class="card-meta">${item.game ? escapeHtml(item.game) : ''}</p>
+      <p class="card-meta">${escapeHtml(item.meta || item.game || '')}</p>
       <p class="card-desc">${escapeHtml(item.description || '')}</p>
       <div class="card-footer">
         ${liveBadge}
@@ -209,10 +254,8 @@ function createCard(item) {
 }
 
 function escapeHtml(str) {
+  if (!str) return '';
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
 }
-
-// Init
-loadKeys();
