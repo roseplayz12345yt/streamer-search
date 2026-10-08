@@ -1,7 +1,7 @@
 // Streamer Search — No API keys required
 // YouTube via public Invidious instances
 // Twitch via public GraphQL endpoint
-// Watch videos & live streams in-site
+// Watch opens full-page player in a new tab on this site
 
 const INVIDIOUS_INSTANCES = [
   'https://invidious.f5.si',
@@ -14,9 +14,6 @@ const INVIDIOUS_INSTANCES = [
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 const TWITCH_SEARCH_HASH = 'c2df3c3038e88bde5af3da9c0bdd215ee83ab9a5850c7e57afdbc223ea74e102';
 
-// Detect parent domain for Twitch embeds (required by Twitch)
-const TWITCH_PARENT = location.hostname || 'localhost';
-
 let currentPlatform = 'youtube';
 let activeInvidious = INVIDIOUS_INSTANCES[0];
 
@@ -28,13 +25,6 @@ const resultsGrid = document.getElementById('results-grid');
 const emptyState = document.getElementById('empty-state');
 const loading = document.getElementById('loading');
 const tabs = document.querySelectorAll('.tab');
-
-const playerModal = document.getElementById('player-modal');
-const playerIframe = document.getElementById('player-iframe');
-const playerTitle = document.getElementById('player-title');
-const playerExternal = document.getElementById('player-external');
-const playerClose = document.getElementById('player-close');
-const playerBackdrop = document.getElementById('player-backdrop');
 
 // Tabs
 tabs.forEach(tab => {
@@ -51,39 +41,27 @@ searchInput.addEventListener('keydown', e => {
 });
 searchBtn.addEventListener('click', doSearch);
 
-// Player close
-playerClose.addEventListener('click', closePlayer);
-playerBackdrop.addEventListener('click', closePlayer);
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closePlayer();
-});
-
+/** Open the site's full-page player in a new browser tab */
 function openPlayer(item) {
-  let embedUrl = '';
+  const params = new URLSearchParams();
 
   if (item.platform === 'youtube' && item.videoId) {
-    // Prefer Invidious embed for privacy, fallback to YouTube
-    embedUrl = `${activeInvidious}/embed/${item.videoId}?autoplay=1`;
+    params.set('type', 'yt');
+    params.set('id', item.videoId);
+    params.set('inv', activeInvidious);
   } else if (item.platform === 'twitch' && item.login) {
-    // Live stream embed (or VOD if we had id)
-    embedUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(item.login)}&parent=${TWITCH_PARENT}&autoplay=true`;
+    params.set('type', 'twitch');
+    params.set('id', item.login);
   } else {
-    // Fallback: open external
     window.open(item.url, '_blank');
     return;
   }
 
-  playerTitle.textContent = item.title || 'Watching';
-  playerExternal.href = item.url;
-  playerIframe.src = embedUrl;
-  playerModal.hidden = false;
-  document.body.style.overflow = 'hidden';
-}
+  params.set('title', item.title || 'Watching');
+  params.set('url', item.url || '');
 
-function closePlayer() {
-  playerIframe.src = '';
-  playerModal.hidden = true;
-  document.body.style.overflow = '';
+  const watchUrl = 'watch.html?' + params.toString();
+  window.open(watchUrl, '_blank');
 }
 
 async function doSearch() {
@@ -127,7 +105,6 @@ async function searchYouTube(query) {
 
   for (const base of INVIDIOUS_INSTANCES) {
     try {
-      // Fetch both videos and channels
       const [videosRes, channelsRes] = await Promise.all([
         fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { signal: AbortSignal.timeout(8000) }),
         fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=channel`, { signal: AbortSignal.timeout(8000) })
@@ -138,7 +115,7 @@ async function searchYouTube(query) {
       const videos = videosRes.ok ? await videosRes.json() : [];
       const channels = channelsRes.ok ? await channelsRes.json() : [];
 
-      activeInvidious = base; // remember working instance for embeds
+      activeInvidious = base;
 
       const videoItems = (videos || [])
         .filter(item => item.type === 'video')
@@ -177,7 +154,6 @@ async function searchYouTube(query) {
           canWatch: false
         }));
 
-      // Videos first (watchable), then channels
       return [...videoItems, ...channelItems];
     } catch (err) {
       lastError = err;
@@ -260,7 +236,7 @@ async function searchTwitch(query) {
         : (item.broadcastSettings?.title || ''),
       live: false,
       game: '',
-      canWatch: false // set after enrich
+      canWatch: false
     };
   });
 
@@ -298,7 +274,6 @@ async function enrichTwitchLive(items) {
         item.meta = stream.viewersCount
           ? `${formatCount(stream.viewersCount)} viewers · ${item.game || ''}`.trim()
           : item.meta;
-        // Better thumbnail for live: use preview if available
         item.thumbnail = `https://static-cdn.jtvnw.net/previews-ttv/live_user_${item.login}-640x360.jpg`;
       } else {
         item.live = false;

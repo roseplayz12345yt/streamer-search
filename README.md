@@ -4,13 +4,13 @@ A modern, **key-free** website to **search and watch** YouTube videos & Twitch l
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![No API Keys](https://img.shields.io/badge/API%20keys-not%20required-success)
-![Watch in-site](https://img.shields.io/badge/watch-in--site%20player-purple)
+![Watch in new tab](https://img.shields.io/badge/watch-new%20tab%20player-purple)
 
 ## Features
 
 - Search **YouTube videos + channels** (via public Invidious instances)
 - Search **Twitch streamers** (via Twitch public GraphQL)
-- **Watch videos and live streams directly on the site** (embedded player)
+- **Watch opens a full-page player in a new tab** on this site
 - Filter Twitch results to **Live only**
 - Combined search (Both platforms)
 - Beautiful dark UI with play overlays
@@ -25,12 +25,16 @@ Enable GitHub Pages on this repo, then visit:
 
 ## How watching works
 
-| Content | How it plays |
-|---------|--------------|
-| YouTube videos | Embedded via Invidious (privacy-friendly) or YouTube |
-| Twitch live streams | Official Twitch player embed (`player.twitch.tv`) |
+Click **Watch** (or the play button) on any video / live stream card.
 
-Click **Watch** or the play button on any video/live card to open the in-site player.
+A **new browser tab** opens on this site (`watch.html`) with a full-page player:
+
+| Content | Player |
+|---------|--------|
+| YouTube videos | Invidious embed |
+| Twitch live streams | Official Twitch player |
+
+You can also use **Open original** to go to YouTube/Twitch, or **Close tab** when done.
 
 ## How search works
 
@@ -45,9 +49,10 @@ Everything runs in the browser. No backend, no keys, no signup.
 
 ```
 streamer-search/
-├── index.html      # Main page + player modal
-├── styles.css      # Dark modern UI + player
-├── app.js          # Search + embed logic
+├── index.html      # Search page
+├── watch.html      # Full-page player (opens in new tab)
+├── styles.css      # Dark modern UI
+├── app.js          # Search + open player in new tab
 └── README.md
 ```
 
@@ -58,7 +63,7 @@ streamer-search/
 3. Select branch `main` and folder `/ (root)`
 4. Save — the site will be live in about a minute
 
-**Note for Twitch embeds:** Twitch requires the correct `parent` domain. On GitHub Pages this is automatically set to `roseplayz12345yt.github.io`.
+**Note for Twitch embeds:** Twitch requires the correct `parent` domain. On GitHub Pages this is set automatically.
 
 ## Notes
 

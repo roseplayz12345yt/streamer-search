@@ -16,7 +16,7 @@
         <span class="logo-icon">▶</span>
         <h1>Streamer Search</h1>
       </div>
-      <p class="tagline">Search & watch YouTube + Twitch — no API keys needed</p>
+      <p class="tagline">Search & watch YouTube + Twitch — opens in a new tab on this site</p>
     </header>
 
     <section class="search-section">
@@ -39,7 +39,7 @@
     <section class="results" id="results">
       <div class="empty-state" id="empty-state">
         <div class="empty-icon">🔍</div>
-        <p>Enter a search term and hit Search to find & watch content</p>
+        <p>Enter a search term and hit Search — Watch opens a player in a new tab</p>
       </div>
       <div class="results-grid" id="results-grid"></div>
       <div class="loading" id="loading" hidden>
@@ -50,25 +50,8 @@
 
     <footer class="footer">
       <p>Built with ❤️ · Open source on <a href="https://github.com/roseplayz12345yt/streamer-search" target="_blank">GitHub</a></p>
-      <p class="disclaimer">Uses public Invidious instances & Twitch GraphQL. Watch videos & live streams right here on the site.</p>
+      <p class="disclaimer">Uses public Invidious instances & Twitch GraphQL. Videos open in a new tab on this site.</p>
     </footer>
-  </div>
-
-  <!-- Player Modal -->
-  <div class="player-modal" id="player-modal" hidden>
-    <div class="player-backdrop" id="player-backdrop"></div>
-    <div class="player-container">
-      <div class="player-header">
-        <h2 id="player-title">Watching</h2>
-        <button class="player-close" id="player-close" aria-label="Close">✕</button>
-      </div>
-      <div class="player-frame-wrap">
-        <iframe id="player-iframe" src="" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture" frameborder="0"></iframe>
-      </div>
-      <div class="player-actions">
-        <a id="player-external" href="#" target="_blank" rel="noopener" class="btn primary">Open on platform →</a>
-      </div>
-    </div>
   </div>
 
   <script src="app.js"></script>
